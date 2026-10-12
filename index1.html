@@ -1,0 +1,267 @@
+
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FotoVault — Paneli Admin</title>
+<style>
+:root {
+  --bg:#111411; --surface:#1b201b; --text:#f4f5ef;
+  --muted:#a4ad9f; --line:#343c32; --accent:#c6ff7e;
+}
+* { box-sizing:border-box; }
+body {
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:Inter,system-ui,Arial,sans-serif;
+}
+header {
+  padding:20px 5%; border-bottom:1px solid var(--line);
+  display:flex; justify-content:space-between; align-items:center;
+  gap:12px; flex-wrap:wrap;
+}
+.brand { font-size:22px; font-weight:850; }
+a { color:var(--accent); text-decoration:none; }
+main { max-width:1400px; margin:auto; padding:28px 20px; }
+h1 { margin-top:0; }
+.muted { color:var(--muted); }
+.toolbar { display:flex; gap:10px; flex-wrap:wrap; margin:20px 0; }
+input,button { padding:11px 14px; border-radius:10px; }
+input {
+  min-width:220px; flex:1; background:var(--bg);
+  color:var(--text); border:1px solid var(--line);
+}
+button {
+  border:0; cursor:pointer; font-weight:750;
+  background:var(--accent); color:#18220f;
+}
+button.secondary {
+  background:transparent; color:var(--text);
+  border:1px solid var(--line);
+}
+.summary { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+.stat {
+  background:var(--surface); border:1px solid var(--line);
+  padding:16px; border-radius:12px; min-width:150px;
+}
+.stat strong { display:block; font-size:25px; margin-top:5px; }
+.table-wrap {
+  overflow:auto; border:1px solid var(--line);
+  border-radius:12px; background:var(--surface);
+}
+table { width:100%; border-collapse:collapse; min-width:1150px; }
+th,td {
+  padding:12px; border-bottom:1px solid var(--line);
+  text-align:left; vertical-align:top; font-size:13px;
+}
+th { color:var(--accent); white-space:nowrap; }
+td { overflow-wrap:anywhere; }
+.empty { padding:25px; color:var(--muted); }
+.status { color:var(--muted); font-size:12px; margin-top:14px; }
+@media(max-width:600px) {
+  main { padding:22px 12px; }
+  header { padding:16px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">◈ FotoVault — Admin</div>
+  <a href="index.html">← Kthehu te faqja</a>
+</header>
+
+<main>
+  <h1>Regjistrimet e anëtarëve</h1>
+  <p class="muted">
+    Të dhënat e regjistrimit, seriali, muaji/viti dhe kodi promocional.
+  </p>
+
+  <div class="summary">
+    <div class="stat">
+      <span class="muted">Regjistrime gjithsej</span>
+      <strong id="totalCount">0</strong>
+    </div>
+    <div class="stat">
+      <span class="muted">Regjistrime sot</span>
+      <strong id="todayCount">0</strong>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <input id="search" type="search"
+      placeholder="Kërko emër, email, telefon, serial ose promo...">
+    <button id="exportBtn">Eksporto CSV</button>
+    <button id="refreshBtn" class="secondary">Rifresko</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Nr.</th>
+          <th>Emri</th>
+          <th>Mbiemri</th>
+          <th>Email</th>
+          <th>Telefoni</th>
+          <th>Numri serial</th>
+          <th>Muaji/Viti</th>
+          <th>Kodi promo</th>
+          <th>Data e regjistrimit</th>
+          <th>Statusi</th>
+        </tr>
+      </thead>
+      <tbody id="clientRows"></tbody>
+    </table>
+    <div id="emptyMessage" class="empty" hidden>
+      Nuk ka regjistrime për t'u shfaqur.
+    </div>
+  </div>
+
+  <p class="status" id="panelStatus" aria-live="polite"></p>
+</main>
+
+<script>
+const STORAGE_KEY = 'fotovault_klientet';
+const rows = document.getElementById('clientRows');
+const search = document.getElementById('search');
+const emptyMessage = document.getElementById('emptyMessage');
+const panelStatus = document.getElementById('panelStatus');
+
+let clients = [];
+
+function safeText(value) {
+  return String(value ?? '');
+}
+
+function loadClients() {
+  try {
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    clients = Array.isArray(data) ? data : [];
+  } catch {
+    clients = [];
+  }
+  render();
+}
+
+function makeCell(value) {
+  const td = document.createElement('td');
+  td.textContent = safeText(value) || '—';
+  return td;
+}
+
+function formatDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return safeText(value);
+
+  return date.toLocaleString('sq-AL', {
+    year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit'
+  });
+}
+
+function render() {
+  const term = search.value.trim().toLocaleLowerCase('sq');
+
+  const filtered = clients.filter(client => {
+    const searchable = [
+      client.name, client.firstName, client.lastName,
+      client.email, client.phone, client.serialNumber,
+      client.expiry, client.promoCode, client.status, client.date
+    ].map(safeText).join(' ').toLocaleLowerCase('sq');
+
+    return searchable.includes(term);
+  });
+
+  rows.replaceChildren();
+
+  filtered.forEach((client, index) => {
+    const tr = document.createElement('tr');
+
+    const firstName = client.firstName ||
+      safeText(client.name).trim().split(/\s+/)[0] || '';
+    const lastName = client.lastName ||
+      safeText(client.name).trim().split(/\s+/).slice(1).join(' ');
+
+    [
+      index + 1,
+      firstName,
+      lastName,
+      client.email,
+      client.phone,
+      client.serialNumber,
+      client.expiry,
+      client.promoCode,
+      formatDate(client.date),
+      client.status
+    ].forEach(value => tr.appendChild(makeCell(value)));
+
+    rows.appendChild(tr);
+  });
+
+  emptyMessage.hidden = filtered.length !== 0;
+  document.getElementById('totalCount').textContent = clients.length;
+
+  const now = new Date();
+  const todayTotal = clients.filter(client => {
+    if (!client.date) return false;
+    const date = new Date(client.date);
+
+    return !Number.isNaN(date.getTime()) &&
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate();
+  }).length;
+
+  document.getElementById('todayCount').textContent = todayTotal;
+  panelStatus.textContent =
+    `Po shfaqen ${filtered.length} nga ${clients.length} regjistrime.`;
+}
+
+function csvEscape(value) {
+  let text = safeText(value);
+  if (/^[=+\-@]/.test(text)) text = "'" + text;
+  return '"' + text.replace(/"/g, '""') + '"';
+}
+
+function exportCSV() {
+  const headers = [
+    'Emri', 'Mbiemri', 'Email', 'Telefoni', 'Numri serial',
+    'Muaji/Viti', 'Kodi promo', 'Data e regjistrimit', 'Statusi'
+  ];
+
+  const data = clients.map(client => {
+    const parts = safeText(client.name).trim().split(/\s+/);
+    return [
+      client.firstName || parts[0] || '',
+      client.lastName || parts.slice(1).join(' '),
+      client.email, client.phone, client.serialNumber,
+      client.expiry, client.promoCode, formatDate(client.date), client.status
+    ];
+  });
+
+  const csv = '\uFEFF' + [headers, ...data]
+    .map(row => row.map(csvEscape).join(','))
+    .join('\r\n');
+
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = 'fotovault-regjistrimet.csv';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+search.addEventListener('input', render);
+document.getElementById('refreshBtn').addEventListener('click', loadClients);
+document.getElementById('exportBtn').addEventListener('click', exportCSV);
+
+loadClients();
+</script>
+</body>
+</html>
